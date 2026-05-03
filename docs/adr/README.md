@@ -30,6 +30,7 @@ ADRs são imutáveis: se uma decisão for revertida, criamos um novo ADR que **s
 - [019 — Tratamento de exceções via `@RestControllerAdvice`](019-tratamento-excecoes.md)
 - [020 — Versionamento de API por URI](020-versionamento-uri.md)
 - [021 — Spec Driven Development](021-sdd.md)
+- [022 — Trade-offs de performance e observabilidade](022-performance.md)
 - [023 — Política de deprecação de versão de API](023-deprecacao-versao-api.md)
 
 ## Status
@@ -40,4 +41,4 @@ ADRs são imutáveis: se uma decisão for revertida, criamos um novo ADR que **s
 | Substituído | Substituído por ADR mais recente |
 | Deprecado | Decisão revogada, sem substituto direto |
 
-Todas as 22 decisões atuais estão **Aceitas**.
+Todas as 23 decisões atuais estão **Aceitas**.

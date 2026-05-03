@@ -51,7 +51,7 @@ br.com.desafio.votacao
 
 ## Schema do banco
 
-3 tabelas, criadas por Flyway (`V1__init.sql` + `V2__renomeia_associado_id_para_cpf.sql`):
+3 tabelas, criadas por Flyway (`V1__init.sql`):
 
 ```
 ┌──────────┐         ┌──────────┐         ┌──────────┐
@@ -59,15 +59,15 @@ br.com.desafio.votacao
 │──────────│ 1     1 │──────────│ 1     n │──────────│
 │ id       │         │ id       │         │ id       │
 │ titulo   │         │ pauta_id │ UNIQUE  │ pauta_id │ ┐
-│ descricao│         │ aberta_em│         │ cpf      │ │ UNIQUE
-│ criada_em│         │ fecha_em │         │ escolha  │ ┘ (pauta_id, cpf)
+│ descricao│         │ aberta_em│         │ assoc_id │ │ UNIQUE
+│ criada_em│         │ fecha_em │         │ escolha  │ ┘ (pauta_id, assoc_id)
 └──────────┘         └──────────┘         │ reg_em   │
                                           └──────────┘
 ```
 
 Constraints e índices ativos:
 - `uk_sessao_pauta` em `sessao(pauta_id)` — RN-1 (1 sessão/pauta).
-- `uk_voto_pauta_cpf` em `voto(pauta_id, cpf)` — RN-3 (1 voto/CPF/pauta).
+- `uk_voto_pauta_associado` em `voto(pauta_id, associado_id)` — RN-3 (1 voto/associado/pauta).
 - `CHECK (fecha_em > aberta_em)` em `sessao`.
 - `CHECK (escolha IN ('SIM','NAO'))` em `voto`.
 - `idx_voto_pauta` em `voto(pauta_id)` — acelera apuração.
@@ -78,7 +78,7 @@ Concorrência ([ADR-018](adr/018-concorrencia-unique.md)) é resolvida pelas con
 
 ```
 Cliente
-  │ POST { cpf: "11144477735", voto: "SIM" }
+  │ POST { associadoId: "A1", voto: "SIM" }
   ▼
 [VotoController]
   │ Bean Validation no record (@NotBlank/@NotNull/@Size)
@@ -136,7 +136,24 @@ Detalhado no [ADR-019](adr/019-tratamento-excecoes.md). Resumo:
 Logs em SLF4J + Logback ([ADR-012](adr/012-logging.md)) nos pontos definidos em `plan.md` §6:
 
 - **INFO:** pauta criada · sessão aberta · voto registrado · sessão expirada detectada na apuração.
-- **WARN:** voto rejeitado (duplicado / sessão fechada / sem sessão / CPF inválido / associado não habilitado) · tentativa de abrir 2ª sessão.
+- **WARN:** voto rejeitado (duplicado / sessão fechada / sem sessão) · tentativa de abrir 2ª sessão.
 - **ERROR:** exceções não mapeadas (no `GlobalExceptionHandler`).
 
-Métricas Actuator/Prometheus, distributed tracing e logs JSON estruturados ficam para Spec 004 (performance).
+**Spring Boot Actuator** ativo (Spec 004 — [ADR-022](adr/022-performance.md)):
+
+- `GET /actuator/health` — status do app + datasource.
+- `GET /actuator/info` — metadados (`info.app.*`).
+- `GET /actuator/metrics` — Micrometer (`http.server.requests`, `hikaricp.connections.usage`, `jvm.threads.live`, ...).
+
+Para scrape Prometheus em prod, basta plugar `micrometer-registry-prometheus` (gatilho explícito documentado em [`docs/tarefas-bonus.md`](tarefas-bonus.md#o-que-ficou-de-fora-gatilhos-explícitos-para-reativar)).
+
+## Performance (Spec 004)
+
+Otimizações de baixo custo aplicadas:
+
+- **Java 21 virtual threads** (`spring.threads.virtual.enabled: true`) — Tomcat trata cada request num VT.
+- **Apuração em 1 query** — `agregarVotosPorEscolha` (`GROUP BY`) substitui 2× `count`. Plano: index range scan em `idx_voto_pauta`.
+- **HikariCP tunado** — pool 20, timeouts conservadores; com VTs, pool pequeno enfileira sem starvation.
+- **Compressão gzip** de JSON ≥ 1 KB no Tomcat.
+
+Baseline em ambiente local (JDK 21 + H2 in-memory, 10 000 votos / concorrência 32): **~3 300 req/s, p99 ~35 ms, apuração ~80 ms**. Reproduzível via `mvn -Dperf.enabled=true -Dtest=CargaSistemaPerformanceTest test`.

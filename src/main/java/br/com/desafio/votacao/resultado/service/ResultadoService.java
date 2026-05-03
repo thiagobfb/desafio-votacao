@@ -7,10 +7,14 @@ import br.com.desafio.votacao.resultado.domain.ResultadoApurado;
 import br.com.desafio.votacao.resultado.domain.ResultadoVotacao;
 import br.com.desafio.votacao.sessao.domain.Sessao;
 import br.com.desafio.votacao.sessao.service.SessaoService;
+import br.com.desafio.votacao.voto.domain.ContagemPorEscolha;
 import br.com.desafio.votacao.voto.domain.Escolha;
 import br.com.desafio.votacao.voto.repository.VotoRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +46,9 @@ public class ResultadoService {
         Pauta pauta = pautaService.buscarObrigatorio(pautaId);
         Optional<Sessao> sessaoOpt = sessaoService.buscarPorPautaId(pautaId);
 
-        long totalSim = votoRepository.countByPautaIdAndEscolha(pautaId, Escolha.SIM);
-        long totalNao = votoRepository.countByPautaIdAndEscolha(pautaId, Escolha.NAO);
+        Map<Escolha, Long> contagem = contagemPorEscolha(pautaId);
+        long totalSim = contagem.getOrDefault(Escolha.SIM, 0L);
+        long totalNao = contagem.getOrDefault(Escolha.NAO, 0L);
         long total = totalSim + totalNao;
 
         if (sessaoOpt.isEmpty()) {
@@ -72,5 +77,14 @@ public class ResultadoService {
                 pautaId, sessao.getId(), resultado, total);
         return new ResultadoApurado(pauta.getId(), EstadoPauta.ENCERRADA,
                 totalSim, totalNao, total, resultado);
+    }
+
+    private Map<Escolha, Long> contagemPorEscolha(Long pautaId) {
+        List<ContagemPorEscolha> linhas = votoRepository.agregarVotosPorEscolha(pautaId);
+        Map<Escolha, Long> mapa = new EnumMap<>(Escolha.class);
+        for (ContagemPorEscolha linha : linhas) {
+            mapa.put(linha.escolha(), linha.total());
+        }
+        return mapa;
     }
 }

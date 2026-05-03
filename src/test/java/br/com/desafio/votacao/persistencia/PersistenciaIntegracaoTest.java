@@ -7,9 +7,11 @@ import br.com.desafio.votacao.pauta.domain.Pauta;
 import br.com.desafio.votacao.pauta.repository.PautaRepository;
 import br.com.desafio.votacao.sessao.domain.Sessao;
 import br.com.desafio.votacao.sessao.repository.SessaoRepository;
+import br.com.desafio.votacao.voto.domain.ContagemPorEscolha;
 import br.com.desafio.votacao.voto.domain.Escolha;
 import br.com.desafio.votacao.voto.domain.Voto;
 import br.com.desafio.votacao.voto.repository.VotoRepository;
+import java.util.List;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -96,6 +98,24 @@ class PersistenciaIntegracaoTest {
 
         assertThat(votos.existsByPautaIdAndCpf(pauta.getId(), "11111111111")).isTrue();
         assertThat(votos.existsByPautaIdAndCpf(pauta.getId(), "22222222222")).isFalse();
+    }
+
+    @Test
+    void agregarVotosPorEscolhaRetornaContagemEmUmaQuery() {
+        Pauta pauta = pautas.saveAndFlush(new Pauta("Pauta X", null, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "11111111111", Escolha.SIM, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "22222222222", Escolha.SIM, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "33333333333", Escolha.NAO, AGORA));
+
+        List<ContagemPorEscolha> contagem = votos.agregarVotosPorEscolha(pauta.getId());
+
+        assertThat(contagem).hasSize(2);
+        assertThat(contagem).extracting(ContagemPorEscolha::escolha)
+                .containsExactlyInAnyOrder(Escolha.SIM, Escolha.NAO);
+        long sim = contagem.stream().filter(c -> c.escolha() == Escolha.SIM).findFirst().get().total();
+        long nao = contagem.stream().filter(c -> c.escolha() == Escolha.NAO).findFirst().get().total();
+        assertThat(sim).isEqualTo(2);
+        assertThat(nao).isEqualTo(1);
     }
 
     @Test

@@ -5,7 +5,7 @@ O `README.md` lista três tarefas bônus do desafio. Aqui está o **estado real*
 | Bônus | Tema | Status |
 |---|---|---|
 | 1 | Validação externa de CPF | ✅ **Implementado** (Spec 002) |
-| 2 | Performance | ⚠️ **Endereçado parcialmente em design**, sem implementação medida |
+| 2 | Performance | ✅ **Implementado** (Spec 004) — otimizações + teste de carga reproduzível |
 | 3 | Versionamento de API | ✅ **Implementado** (Spec 003) — estratégia + política de deprecação documentadas |
 
 ---
@@ -69,34 +69,58 @@ O enunciado original mostra ambos os erros (CPF inválido e UNABLE_TO_VOTE) send
 
 - **Cliente HTTP real** para um serviço externo (apenas a interface está pronta — basta uma nova `@Component` substituindo a fake).
 - **Cache** de respostas do validador.
+- **Validação de formato CPF** (algoritmo dos dígitos verificadores) — desnecessária dado que o validador externo é a fonte de verdade.
 
 ---
 
 ## Bônus 2 — Performance
 
-**Status:** Endereçado **em design**, **não medido**.
+**Status:** ✅ Implementado em [`specs/004-performance/`](../specs/004-performance/) — ver [ADR-022](adr/022-performance.md).
 
-### O que existe hoje no código
+### Otimizações implementadas
 
-- Índice `idx_voto_pauta` em `voto(pauta_id)` (Flyway `V1__init.sql`) para acelerar `countByPautaIdAndEscolha`.
-- Apuração com `count(*)` agregado **no banco** — não traz a lista de votos para a JVM.
-- `@Transactional(readOnly = true)` em queries de leitura.
-- FKs como `Long` raw evitam N+1 inadvertido ([ADR-016](adr/016-fks-long-raw.md)).
-- Constraints UNIQUE no banco evitam round-trips de checagem ([ADR-018](adr/018-concorrencia-unique.md)).
+- **Java 21 virtual threads** habilitados (`spring.threads.virtual.enabled: true`). Tomcat passa a usar VTs.
+- **Apuração em 1 query** — substituí 2× `count` por uma query agregada (`agregarVotosPorEscolha` com `GROUP BY`). Plano de execução é index range scan em `idx_voto_pauta`.
+- **HikariCP tunado** — pool 20 (com VTs), `connection-timeout=5s`, `max-lifetime=30min`.
+- **Hibernate batch** — `jdbc.batch_size: 50` + `order_inserts/updates`.
+- **Tomcat** — compressão gzip de JSON ≥ 1 KB, `threads.max=200`, `accept-count=100`, `max-connections=8192`.
+- **Spring Boot Actuator** expondo `/actuator/health`, `/actuator/info`, `/actuator/metrics` (Micrometer pronto para `prometheus`).
 
-### O que **não** existe
+### Teste de carga reproduzível
 
-- Nenhum **benchmark** ou **load test** medido (sem JMH, k6, Gatling, JMeter).
-- Sem **caching** (Caffeine/Redis) na contagem.
-- Sem **virtual threads** habilitados (Java 21+ permitiria).
-- Sem otimizações específicas para o cenário "centenas de milhares de votos" mencionado no enunciado.
+Arquivo: `src/test/java/.../performance/CargaSistemaPerformanceTest.java`. Opt-in para não atrasar `mvn verify`:
 
-### Trabalho proposto (Spec 004 — placeholder)
+```bash
+mvn -Dperf.enabled=true -Dtest=CargaSistemaPerformanceTest test
 
-- Cenário de teste com 100k+ votos.
-- Baseline de latência **p95 / p99** para os 4 endpoints.
-- Profiling com async-profiler / JFR.
-- Decisão fundamentada de cache vs materialização vs nada.
+# customizando volume e concorrência
+mvn -Dperf.enabled=true -Dperf.votantes=20000 -Dperf.concorrencia=64 \
+    -Dtest=CargaSistemaPerformanceTest test
+```
+
+Reporta throughput, latência p50/p95/p99, tempo da apuração e taxa de erro. Asserções:
+- Erro HTTP ≤ 1 % (margem para retries esporádicos do transporte).
+- `totalVotos` apurados = sucessos do envio (nenhum voto perdido).
+
+### Baseline medido (JDK 21 + H2 in-memory)
+
+| Cenário | Throughput | p50 | p95 | p99 | Apuração |
+|---|---|---|---|---|---|
+| 5 000 votos / conc=32 | 2 279 req/s | 12,0 ms | 30,5 ms | 47,3 ms | 95,8 ms |
+| 10 000 votos / conc=32 | 3 276 req/s | 7,8 ms | 21,8 ms | 35,3 ms | 81,8 ms |
+| 10 000 votos / conc=32 (rerun) | 3 498 req/s | 7,1 ms | 21,8 ms | 31,2 ms | 65,7 ms |
+
+Erros < 0,2 % nas três rodadas (todos `409 voto duplicado` por retransmissão esporádica do transporte HTTP, não votos perdidos).
+
+### O que ficou de fora (gatilhos explícitos para reativar)
+
+| Otimização | Quando ativar |
+|---|---|
+| Cache (Caffeine/Redis) | p99 da apuração > 200 ms em prod |
+| Materialização de view | apuração > 1 s OU 10 M+ votos por pauta |
+| Particionamento da tabela `voto` | tabela > 100 M linhas |
+| Async write (Kafka/Outbox) | throughput > 10 000 req/s sustentado |
+| `micrometer-registry-prometheus` | quando entrar em prod com SLO formal |
 
 ---
 
@@ -131,4 +155,4 @@ Quando o avaliador rodar o sistema, encontrará:
 
 - ✅ Endpoints todos sob `/api/v1/...`. Estratégia completa (deprecação, breaking criteria, roteamento) documentada em Spec 003 + ADRs 020/023.
 - ✅ Validação de CPF ativa — `cpf` validado pelo fake antes de qualquer regra de domínio; resposta HTTP é 404 nos dois caminhos de falha.
-- ⚠️ Performance: índices presentes e queries agregadas, mas **sem evidência empírica**.
+- ✅ Performance: virtual threads + apuração em 1 query + Hikari tunado + Actuator + teste de carga reproduzível com baseline medido (3 000+ req/s, p99 < 50 ms para 10 000 votos).

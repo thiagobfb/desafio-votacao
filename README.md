@@ -65,7 +65,32 @@ SPRING_PROFILES_ACTIVE=postgres mvn spring-boot:run
 mvn verify
 ```
 
-Roda **todos os testes** (atualmente 79): unitários de service, slice de web (`@WebMvcTest`), integração JPA (`@DataJpaTest`), e integração ponta-a-ponta (`@SpringBootTest`).
+Roda **todos os testes** (atualmente 80): unitários de service, slice de web (`@WebMvcTest`), integração JPA (`@DataJpaTest`), e integração ponta-a-ponta (`@SpringBootTest`).
+
+### Teste de carga (opt-in — Spec 004)
+
+Carga sintética de 10 000 votos paralelos contra a aplicação real (Tomcat + H2). Reporta throughput, latência p50/p95/p99 e tempo da apuração:
+
+```bash
+mvn -Dperf.enabled=true -Dtest=CargaSistemaPerformanceTest test
+
+# parametrizando (default 10 000 / 32 threads)
+mvn -Dperf.enabled=true -Dperf.votantes=20000 -Dperf.concorrencia=64 \
+    -Dtest=CargaSistemaPerformanceTest test
+```
+
+Baseline local: ~3 000+ req/s, p99 < 50 ms, apuração de 10k votos < 100 ms.
+
+### Endpoints de observabilidade (Actuator)
+
+Com a aplicação rodando:
+
+```bash
+curl http://localhost:8080/actuator/health
+curl http://localhost:8080/actuator/info
+curl http://localhost:8080/actuator/metrics
+curl http://localhost:8080/actuator/metrics/http.server.requests
+```
 
 ---
 
@@ -101,9 +126,9 @@ curl -X POST http://localhost:8080/api/v1/pautas/1/sessoes \
   -H 'Content-Type: application/json' \
   -d '{"duracaoMinutos":5}'
 
-# 3. Registra voto (CPF é validado pelo serviço fake — Bônus 1, Spec 002)
-#    O algoritmo dos dígitos verificadores valida o formato; '12345678901' é INVÁLIDO,
-#    '11144477735' é VÁLIDO. Para CPF válido, ABLE_TO_VOTE / UNABLE_TO_VOTE é aleatório.
+# 3. Registra voto (CPF é validado pelo serviço fake — Bônus 1)
+#    O algoritmo dos dígitos verificadores valida o formato; "12345678901" é INVÁLIDO,
+#    "11144477735" é VÁLIDO. Para CPF válido, ABLE_TO_VOTE / UNABLE_TO_VOTE é aleatório.
 curl -X POST http://localhost:8080/api/v1/pautas/1/votos \
   -H 'Content-Type: application/json' \
   -d '{"cpf":"11144477735","voto":"SIM"}'
@@ -186,13 +211,13 @@ Documentação detalhada vive em [`docs/`](docs/) e em [`specs/`](specs/):
 
 ---
 
-## Próximas specs (placeholders, não implementadas)
+## Specs adicionais
 
-Placeholders para as três tarefas bônus do enunciado. Status detalhado em [`docs/tarefas-bonus.md`](docs/tarefas-bonus.md).
+Status detalhado de cada tarefa bônus em [`docs/tarefas-bonus.md`](docs/tarefas-bonus.md).
 
-- **Spec 002** — [Validação externa de CPF](specs/002-validacao-cpf/) (Tarefa Bônus 1) — ✅ **implementada** (algoritmo determinístico DV1+DV2 + habilitação aleatória + 19 testes adicionais).
+- **Spec 002** — [Validação externa de CPF](specs/002-validacao-cpf/) (Tarefa Bônus 1) — ✅ **implementada** (`CpfValidator` + `FakeCpfValidator` + 7 testes adicionais).
 - **Spec 003** — [Estratégia de versionamento de API](specs/003-versionamento-api/) (Tarefa Bônus 3) — ✅ URI prefix `/api/v1/` em vigor + política de deprecação documentada (`Deprecation`/`Sunset` IETF, 6 meses + 30 d de `410 Gone`).
-- **Spec 004** — Performance e suporte a alto volume (Tarefa Bônus 2) — ⚠️ design parcial (índices, contagem agregada); sem load test medido.
+- **Spec 004** — [Performance e suporte a alto volume](specs/004-performance/) (Tarefa Bônus 2) — ✅ virtual threads + apuração em 1 query + Hikari tunado + Actuator + teste de carga reproduzível (~3 000 req/s, p99 < 50 ms).
 
 ---
 

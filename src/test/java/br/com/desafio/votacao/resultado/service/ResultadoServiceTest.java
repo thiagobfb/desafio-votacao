@@ -10,11 +10,13 @@ import br.com.desafio.votacao.resultado.domain.ResultadoApurado;
 import br.com.desafio.votacao.resultado.domain.ResultadoVotacao;
 import br.com.desafio.votacao.sessao.domain.Sessao;
 import br.com.desafio.votacao.sessao.service.SessaoService;
+import br.com.desafio.votacao.voto.domain.ContagemPorEscolha;
 import br.com.desafio.votacao.voto.domain.Escolha;
 import br.com.desafio.votacao.voto.repository.VotoRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,12 +53,18 @@ class ResultadoServiceTest {
         return p;
     }
 
+    private void darContagem(long pautaId, long sim, long nao) {
+        given(votoRepository.agregarVotosPorEscolha(pautaId))
+                .willReturn(List.of(
+                        new ContagemPorEscolha(Escolha.SIM, sim),
+                        new ContagemPorEscolha(Escolha.NAO, nao)));
+    }
+
     @Test
     void retornaSemSessaoQuandoPautaNaoTemSessao() {
         given(pautaService.buscarObrigatorio(1L)).willReturn(pautaComId(1L));
         given(sessaoService.buscarPorPautaId(1L)).willReturn(Optional.empty());
-        given(votoRepository.countByPautaIdAndEscolha(1L, Escolha.SIM)).willReturn(0L);
-        given(votoRepository.countByPautaIdAndEscolha(1L, Escolha.NAO)).willReturn(0L);
+        given(votoRepository.agregarVotosPorEscolha(1L)).willReturn(List.of());
 
         ResultadoApurado r = service.apurar(1L);
 
@@ -70,8 +78,7 @@ class ResultadoServiceTest {
         given(pautaService.buscarObrigatorio(1L)).willReturn(pautaComId(1L));
         Sessao aberta = new Sessao(1L, AGORA.minusMinutes(1), AGORA.plusMinutes(5));
         given(sessaoService.buscarPorPautaId(1L)).willReturn(Optional.of(aberta));
-        given(votoRepository.countByPautaIdAndEscolha(1L, Escolha.SIM)).willReturn(3L);
-        given(votoRepository.countByPautaIdAndEscolha(1L, Escolha.NAO)).willReturn(2L);
+        darContagem(1L, 3L, 2L);
 
         ResultadoApurado r = service.apurar(1L);
 
@@ -113,7 +120,10 @@ class ResultadoServiceTest {
 
     @Test
     void retornaEmpateZeroVotosComEncerrada() {
-        configurarSessaoEncerradaCom(0L, 0L);
+        given(pautaService.buscarObrigatorio(1L)).willReturn(pautaComId(1L));
+        Sessao encerrada = new Sessao(1L, AGORA.minusMinutes(10), AGORA.minusMinutes(1));
+        given(sessaoService.buscarPorPautaId(1L)).willReturn(Optional.of(encerrada));
+        given(votoRepository.agregarVotosPorEscolha(1L)).willReturn(List.of());
 
         ResultadoApurado r = service.apurar(1L);
 
@@ -125,7 +135,6 @@ class ResultadoServiceTest {
         given(pautaService.buscarObrigatorio(1L)).willReturn(pautaComId(1L));
         Sessao encerrada = new Sessao(1L, AGORA.minusMinutes(10), AGORA.minusMinutes(1));
         given(sessaoService.buscarPorPautaId(1L)).willReturn(Optional.of(encerrada));
-        given(votoRepository.countByPautaIdAndEscolha(1L, Escolha.SIM)).willReturn(sim);
-        given(votoRepository.countByPautaIdAndEscolha(1L, Escolha.NAO)).willReturn(nao);
+        darContagem(1L, sim, nao);
     }
 }
