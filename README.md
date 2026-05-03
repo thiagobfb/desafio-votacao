@@ -1,4 +1,202 @@
-# Votação
+# Sistema de Votação Cooperativista
+
+> Solução para o desafio técnico de **Sistema de Votação** — backend REST em Java/Spring Boot que gerencia pautas, sessões de votação, votos de associados e apuração de resultados.
+>
+> O desafio original está preservado ao final deste documento.
+
+---
+
+## Stack
+
+| Camada | Escolha |
+|---|---|
+| Linguagem | Java 21 (compilada com JDK 25 no ambiente local) |
+| Framework | Spring Boot 3.3.5 |
+| Build | Maven 3.9+ |
+| Persistência | Spring Data JPA + Hibernate |
+| Banco padrão | H2 file mode (`./data/votacao`) |
+| Banco de teste | H2 in-memory |
+| Banco opcional | PostgreSQL (profile `postgres`) |
+| Migrations | Flyway |
+| Validação | Jakarta Bean Validation |
+| Documentação | springdoc-openapi 2 (Swagger UI) |
+| Testes | JUnit 5, Mockito, AssertJ, Spring Boot Test |
+| Boilerplate | Lombok (apenas em entidades JPA) |
+
+---
+
+## Pré-requisitos
+
+- Java 21+
+- Maven 3.9+
+
+Nada mais. O banco H2 sobe junto com a aplicação no profile padrão; nenhum container ou serviço externo é necessário para executar/avaliar.
+
+---
+
+## Como executar
+
+```bash
+mvn spring-boot:run
+```
+
+A aplicação sobe em `http://localhost:8080`. Os dados ficam em `./data/votacao.mv.db` (sobrevivem a restart, conforme requisito do desafio).
+
+Para empacotar:
+
+```bash
+mvn clean package
+java -jar target/votacao-0.1.0-SNAPSHOT.jar
+```
+
+### Profile alternativo com PostgreSQL
+
+Disponível mas opcional. Suba um Postgres em `localhost:5432` (database `votacao`, user/pass `votacao`/`votacao`) e ative:
+
+```bash
+SPRING_PROFILES_ACTIVE=postgres mvn spring-boot:run
+```
+
+---
+
+## Como testar
+
+```bash
+mvn verify
+```
+
+Roda **todos os testes** (atualmente 60): unitários de service, slice de web (`@WebMvcTest`), integração JPA (`@DataJpaTest`), e integração ponta-a-ponta (`@SpringBootTest`).
+
+---
+
+## Documentação da API
+
+Com a aplicação rodando:
+
+- **Swagger UI** — http://localhost:8080/swagger-ui.html
+- **OpenAPI JSON** — http://localhost:8080/v3/api-docs
+- **Console H2** (debug local) — http://localhost:8080/h2-console (JDBC URL `jdbc:h2:file:./data/votacao`)
+
+### Endpoints principais
+
+| Método | Caminho | Descrição |
+|---|---|---|
+| `POST` | `/api/v1/pautas` | Cadastra pauta |
+| `GET` | `/api/v1/pautas` | Lista pautas (paginado) |
+| `GET` | `/api/v1/pautas/{id}` | Detalha pauta + estado |
+| `POST` | `/api/v1/pautas/{id}/sessoes` | Abre sessão (duração em minutos, default 1) |
+| `POST` | `/api/v1/pautas/{id}/votos` | Registra voto `SIM`/`NAO` |
+| `GET` | `/api/v1/pautas/{id}/resultado` | Apura resultado |
+
+### Exemplo rápido com curl
+
+```bash
+# 1. Cria pauta
+curl -X POST http://localhost:8080/api/v1/pautas \
+  -H 'Content-Type: application/json' \
+  -d '{"titulo":"Aprovação do balanço 2026","descricao":"Balanço anual"}'
+
+# 2. Abre sessão de 5 minutos
+curl -X POST http://localhost:8080/api/v1/pautas/1/sessoes \
+  -H 'Content-Type: application/json' \
+  -d '{"duracaoMinutos":5}'
+
+# 3. Registra voto
+curl -X POST http://localhost:8080/api/v1/pautas/1/votos \
+  -H 'Content-Type: application/json' \
+  -d '{"associadoId":"A1","voto":"SIM"}'
+
+# 4. Apura
+curl http://localhost:8080/api/v1/pautas/1/resultado
+```
+
+---
+
+## Estrutura do projeto
+
+Organizado **por feature** (não por camada técnica) — código que muda junto fica junto:
+
+```
+src/main/java/br/com/desafio/votacao/
+├── pauta/
+│   ├── api/            # PautaController + DTOs
+│   ├── domain/         # Pauta entity + EstadoPauta enum
+│   ├── repository/     # PautaRepository
+│   └── service/        # PautaService + EstadoPautaResolver
+├── sessao/             # idem
+├── voto/               # idem
+├── resultado/          # idem
+└── shared/
+    ├── config/         # ClockConfig, OpenApiConfig
+    └── exception/      # NegocioException + GlobalExceptionHandler
+```
+
+Migrations em `src/main/resources/db/migration/V1__init.sql`.
+
+---
+
+## Spec Driven Development
+
+O projeto foi desenhado com **SDD** (estilo [Spec Kit](https://github.com/github/spec-kit)) — cada decisão tem rastro:
+
+```
+specs/
+├── constitution.md                     # 8 princípios invioláveis
+├── README.md                           # como o SDD funciona aqui
+└── 001-sistema-votacao/
+    ├── spec.md                         # O QUÊ — RFs, RNs, fluxos, escopo
+    ├── plan.md                         # COMO — stack, arquitetura, contratos REST, schema
+    └── tasks.md                        # passo a passo executável
+```
+
+Antes de implementar a feature, comece por `specs/001-sistema-votacao/spec.md`.
+
+---
+
+## Decisões de design
+
+- **Simplicidade acima de tudo.** Sem DDD/Hexagonal/CQRS — três camadas (Controller → Service → Repository) bastam para o domínio. Critério explícito do desafio: _"evitar over engineering"_.
+- **Domínio anêmico-pragmático.** Entidades carregam estado + uma validação trivial (`Sessao.estaAbertaEm`). Regras de negócio vão para o Service.
+- **FKs como `Long pautaId`** em vez de `@ManyToOne`. Sem proxies/lazy-loading; serviços compõem via repositórios.
+- **Unicidade de voto e de sessão garantida no banco** (`UNIQUE` constraint), não só em código. Race conditions não dependem de ordem das chamadas.
+- **`Clock` injetado** em UTC-3 (Horário de Brasília). Permite testar expiração de sessão sem `Thread.sleep` (ver `MutableClock` nos testes de integração).
+- **`@RestControllerAdvice` com `ErroResponse` minimalista** (`status, message, errors[], timestamp`). Tratamento especial para enums inválidos (`"Valor inválido para 'voto'. Aceitos: [SIM, NAO]"`).
+- **Versionamento de URI** (`/api/v1/...`). Estratégia completa será detalhada na Spec 003.
+- **Logs estruturados** (chave-valor) em transições relevantes: criação de pauta, abertura de sessão, voto registrado/rejeitado.
+
+> Cada decisão tem rationale completa em **[`docs/adr/`](docs/adr/README.md)**.
+
+---
+
+## Documentação técnica
+
+Documentação detalhada vive em [`docs/`](docs/) e em [`specs/`](specs/):
+
+| Tópico | Onde |
+|---|---|
+| **Architectural Decision Records (ADRs)** — 21 decisões de stack e arquitetura, cada uma com contexto/decisão/consequências/alternativas | [`docs/adr/README.md`](docs/adr/README.md) |
+| **Arquitetura** — visão geral, camadas, schema, fluxo de requisição, observabilidade | [`docs/arquitetura.md`](docs/arquitetura.md) |
+| **Estratégia de testes** — tipos presentes, mapa por arquivo, exemplos do que cada nível garante, ausências (performance) | [`docs/testes.md`](docs/testes.md) |
+| **Tarefas bônus** — status real de cada uma das 3 (CPF, performance, versionamento) | [`docs/tarefas-bonus.md`](docs/tarefas-bonus.md) |
+| **Setup nas IDEs** — IntelliJ, Eclipse e VS Code (importar, JDK, Lombok, rodar/debugar/testar) | [`docs/ide-setup.md`](docs/ide-setup.md) |
+| **Spec 001** — requisitos, regras de negócio, plano de implementação, tasks | [`specs/001-sistema-votacao/`](specs/001-sistema-votacao/) |
+| **Constituição do projeto** — 8 princípios invariantes | [`specs/constitution.md`](specs/constitution.md) |
+
+---
+
+## Próximas specs (placeholders, não implementadas)
+
+Placeholders para as três tarefas bônus do enunciado. Status detalhado em [`docs/tarefas-bonus.md`](docs/tarefas-bonus.md).
+
+- **Spec 002** — Validação externa de CPF (Tarefa Bônus 1) — ❌ não implementado.
+- **Spec 003** — Estratégia de versionamento de API (Tarefa Bônus 3) — ✅ URI prefix `/api/v1/` em vigor; estratégia completa pendente.
+- **Spec 004** — Performance e suporte a alto volume (Tarefa Bônus 2) — ⚠️ design parcial (índices, contagem agregada); sem load test medido.
+
+---
+
+---
+
+# Desafio Original
 
 ## Objetivo
 
@@ -93,16 +291,16 @@ A seguir serão detalhados os tipos de tela que o cliente mobile suporta, assim 
 A tela do tipo FORMULARIO exibe uma coleção de campos (itens) e possui um ou dois botões de ação na parte inferior.
 
 O aplicativo envia uma requisição POST para a url informada e com o body definido pelo objeto dentro de cada botão quando o mesmo é acionado. Nos casos onde temos campos de entrada
-de dados na tela, os valores informados pelo usuário são adicionados ao corpo da requisição. Abaixo o exemplo da requisição que o aplicativo vai fazer quando o botão “Ação 1” for acionado:
+de dados na tela, os valores informados pelo usuário são adicionados ao corpo da requisição. Abaixo o exemplo da requisição que o aplicativo vai fazer quando o botão "Ação 1" for acionado:
 
 ```
 POST http://seudominio.com/ACAO1
 {
-    “campo1”: “valor1”,
-    “campo2”: 123,
-    “idCampoTexto”: “Texto”,
-    “idCampoNumerico: 999
-    “idCampoData”: “01/01/2000”
+    "campo1": "valor1",
+    "campo2": 123,
+    "idCampoTexto": "Texto",
+    "idCampoNumerico: 999
+    "idCampoData": "01/01/2000"
 }
 ```
 
@@ -113,5 +311,3 @@ Obs: o formato da url acima é meramente ilustrativo e não define qualquer padr
 A tela do tipo SELECAO exibe uma lista de opções para que o usuário.
 
 O aplicativo envia uma requisição POST para a url informada e com o body definido pelo objeto dentro de cada item da lista de seleção, quando o mesmo é acionado, semelhando ao funcionamento dos botões da tela FORMULARIO.
-
-# desafio-votacao

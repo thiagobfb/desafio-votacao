@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:votacao-test;DB_CLOSE_DELAY=-1;MODE=LEGACY
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    clean-disabled: false
+
+logging:
+  level:
+    root: WARN
+    br.com.desafio.votacao: INFO

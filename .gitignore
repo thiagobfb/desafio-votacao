@@ -1,0 +1,35 @@
+# Build
+target/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# H2 file mode
+data/
+*.mv.db
+*.trace.db
+*.lock.db
+
+# Logs
+*.log
+logs/
+
+# Spring DevTools / temp
+.springBeans
+.spring-boot-devtools.properties
+
+# Maven wrapper noise
+!.mvn/wrapper/maven-wrapper.jar
