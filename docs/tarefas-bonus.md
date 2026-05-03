@@ -6,7 +6,7 @@ O `README.md` lista três tarefas bônus do desafio. Aqui está o **estado real*
 |---|---|---|
 | 1 | Validação externa de CPF | ✅ **Implementado** (Spec 002) |
 | 2 | Performance | ⚠️ **Endereçado parcialmente em design**, sem implementação medida |
-| 3 | Versionamento de API | ✅ **Parcialmente implementado** (URI prefix em vigor) |
+| 3 | Versionamento de API | ✅ **Implementado** (Spec 003) — estratégia + política de deprecação documentadas |
 
 ---
 
@@ -102,24 +102,26 @@ O enunciado original mostra ambos os erros (CPF inválido e UNABLE_TO_VOTE) send
 
 ## Bônus 3 — Versionamento de API
 
-**Status:** ✅ **Parcialmente implementado.**
+**Status:** ✅ Implementado em [`specs/003-versionamento-api/`](../specs/003-versionamento-api/) — ver [ADR-020](adr/020-versionamento-uri.md) (mecanismo) + [ADR-023](adr/023-deprecacao-versao-api.md) (política).
 
 ### O que existe hoje
 
-- **Prefixo de URI `/api/v1/`** em todos os endpoints. Decisão registrada em [ADR-020](adr/020-versionamento-uri.md).
-- `@RequestMapping("/api/v1/...")` em todos os controllers.
-- README e Swagger refletem `v1`.
-
-### O que falta para uma "estratégia completa"
-
-- Critérios formais para criar `v2` (que mudanças contam como "breaking"?).
-- Política de deprecação (quanto tempo `v1` co-existe com `v2`? cabeçalho `Deprecation` / `Sunset`?).
-- Mecanismo de roteamento entre versões (controllers separados? roteamento condicional?).
-- Documentação OpenAPI por versão.
+- **Prefixo de URI `/api/v1/`** em todos os endpoints. Visível em logs, curl, CDN; cacheável por path.
+- **Política de deprecação documentada** (`Deprecation` + `Sunset` headers; 6 meses de coexistência; 30 dias de `410 Gone`).
+- **Critérios objetivos** para classificar mudanças em "aditiva" (sem bumpar) vs "breaking" (`vN+1`) — ver [Spec 003 §"O que é breaking"](../specs/003-versionamento-api/spec.md#o-que-é-breaking).
 
 ### Resposta à pergunta "Como você versionaria?" (do desafio)
 
-> Eu uso **prefixo de URI** (`/api/v1/`) como caminho preferencial: é visível em logs, curl e CDN; cliente sabe imediatamente qual contrato consome; cacheável por path. Quebras viram `/api/v2/` com período de coexistência (mínimo 6 meses, com header `Deprecation: true; sunset=...` em `v1`). Mudanças aditivas (campos opcionais novos) ficam na mesma versão. Detalhamento completo fica em **Spec 003 — Versionamento de API**.
+> Uso **prefixo de URI** (`/api/vN/`): é visível em logs/curl/CDN; o cliente sabe imediatamente qual contrato consome; cacheável por path. Mudanças **aditivas** (campos opcionais, endpoints novos, status novos para casos não previstos) ficam na **mesma versão** — clientes antigos ignoram. Mudanças **breaking** (renomear/remover campo, mudar tipo, mudar semântica) forçam **`vN+1`** em paralelo. `vN` permanece servindo por **≥ 6 meses** com headers `Deprecation: true` e `Sunset: <data>` (padrões IETF). Após o sunset, 30 dias de `410 Gone` antes de remover o código. Roteamento por controllers em pacotes versionados (`feature/api/vN/`); services compartilhados quando o domínio não muda. OpenAPI gera docs separados por versão via `GroupedOpenApi`.
+>
+> Alternativas (header `Accept-Version`, media type `application/vnd.X.v1+json`) são RESTfully mais puras mas pioram observabilidade — versão fica invisível em log/curl básico.
+
+### Trabalho Fase 2 (gatilho: surgir mudança breaking real)
+
+- Criar `feature/api/v2/` ao lado de `v1/`.
+- `ApiVersionMdcFilter` populando MDC `apiVersion` para correlação em log.
+- `Deprecation` + `Sunset` headers em respostas `v1` via interceptor configurável.
+- `springdoc-openapi` com `GroupedOpenApi` por versão.
 
 ---
 
@@ -127,6 +129,6 @@ O enunciado original mostra ambos os erros (CPF inválido e UNABLE_TO_VOTE) send
 
 Quando o avaliador rodar o sistema, encontrará:
 
-- ✅ Endpoints todos sob `/api/v1/...`.
-- ✅ Validação de CPF: ativa — `cpf` é validado pelo fake antes de qualquer regra de domínio; resposta HTTP é 404 nos dois caminhos de falha.
+- ✅ Endpoints todos sob `/api/v1/...`. Estratégia completa (deprecação, breaking criteria, roteamento) documentada em Spec 003 + ADRs 020/023.
+- ✅ Validação de CPF ativa — `cpf` validado pelo fake antes de qualquer regra de domínio; resposta HTTP é 404 nos dois caminhos de falha.
 - ⚠️ Performance: índices presentes e queries agregadas, mas **sem evidência empírica**.

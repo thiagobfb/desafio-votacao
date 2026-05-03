@@ -191,7 +191,7 @@ Documentação detalhada vive em [`docs/`](docs/) e em [`specs/`](specs/):
 Placeholders para as três tarefas bônus do enunciado. Status detalhado em [`docs/tarefas-bonus.md`](docs/tarefas-bonus.md).
 
 - **Spec 002** — [Validação externa de CPF](specs/002-validacao-cpf/) (Tarefa Bônus 1) — ✅ **implementada** (algoritmo determinístico DV1+DV2 + habilitação aleatória + 19 testes adicionais).
-- **Spec 003** — Estratégia de versionamento de API (Tarefa Bônus 3) — ✅ URI prefix `/api/v1/` em vigor; estratégia completa pendente.
+- **Spec 003** — [Estratégia de versionamento de API](specs/003-versionamento-api/) (Tarefa Bônus 3) — ✅ URI prefix `/api/v1/` em vigor + política de deprecação documentada (`Deprecation`/`Sunset` IETF, 6 meses + 30 d de `410 Gone`).
 - **Spec 004** — Performance e suporte a alto volume (Tarefa Bônus 2) — ⚠️ design parcial (índices, contagem agregada); sem load test medido.
 
 ---

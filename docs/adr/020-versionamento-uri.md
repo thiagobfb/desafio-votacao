@@ -1,8 +1,9 @@
 # ADR-020: Versionamento de API por URI
 
-- **Status:** Aceito (preliminar — Spec 003 detalhará)
-- **Data:** 2026-04-30
+- **Status:** Aceito
+- **Data:** 2026-04-30 (preliminar) · confirmado em 2026-05-02 por [Spec 003](../../specs/003-versionamento-api/)
 - **Contexto:** Spec 001 + Tarefa Bônus 3
+- **Estendido por:** [ADR-023](023-deprecacao-versao-api.md) — política de deprecação
 
 ## Contexto
 
