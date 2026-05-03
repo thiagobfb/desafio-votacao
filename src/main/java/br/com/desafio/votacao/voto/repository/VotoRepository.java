@@ -10,5 +10,5 @@ public interface VotoRepository extends JpaRepository<Voto, Long> {
 
     long countByPautaId(Long pautaId);
 
-    boolean existsByPautaIdAndAssociadoId(Long pautaId, String associadoId);
+    boolean existsByPautaIdAndCpf(Long pautaId, String cpf);
 }

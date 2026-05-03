@@ -68,11 +68,11 @@ class PersistenciaIntegracaoTest {
     }
 
     @Test
-    void uniqueConstraintImpedeVotoDuplicadoDoMesmoAssociadoNaPauta() {
+    void uniqueConstraintImpedeVotoDuplicadoDoMesmoCpfNaPauta() {
         Pauta pauta = pautas.saveAndFlush(new Pauta("Pauta X", null, AGORA));
-        votos.saveAndFlush(new Voto(pauta.getId(), "A1", Escolha.SIM, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "11111111111", Escolha.SIM, AGORA));
 
-        Voto duplicado = new Voto(pauta.getId(), "A1", Escolha.NAO, AGORA);
+        Voto duplicado = new Voto(pauta.getId(), "11111111111", Escolha.NAO, AGORA);
         assertThatThrownBy(() -> votos.saveAndFlush(duplicado))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
@@ -80,9 +80,9 @@ class PersistenciaIntegracaoTest {
     @Test
     void contagemPorEscolhaFunciona() {
         Pauta pauta = pautas.saveAndFlush(new Pauta("Pauta X", null, AGORA));
-        votos.saveAndFlush(new Voto(pauta.getId(), "A1", Escolha.SIM, AGORA));
-        votos.saveAndFlush(new Voto(pauta.getId(), "A2", Escolha.SIM, AGORA));
-        votos.saveAndFlush(new Voto(pauta.getId(), "A3", Escolha.NAO, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "11111111111", Escolha.SIM, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "22222222222", Escolha.SIM, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "33333333333", Escolha.NAO, AGORA));
 
         assertThat(votos.countByPautaIdAndEscolha(pauta.getId(), Escolha.SIM)).isEqualTo(2);
         assertThat(votos.countByPautaIdAndEscolha(pauta.getId(), Escolha.NAO)).isEqualTo(1);
@@ -90,12 +90,12 @@ class PersistenciaIntegracaoTest {
     }
 
     @Test
-    void existsByPautaIdAndAssociadoIdDetectaVotoExistente() {
+    void existsByPautaIdAndCpfDetectaVotoExistente() {
         Pauta pauta = pautas.saveAndFlush(new Pauta("Pauta X", null, AGORA));
-        votos.saveAndFlush(new Voto(pauta.getId(), "A1", Escolha.SIM, AGORA));
+        votos.saveAndFlush(new Voto(pauta.getId(), "11111111111", Escolha.SIM, AGORA));
 
-        assertThat(votos.existsByPautaIdAndAssociadoId(pauta.getId(), "A1")).isTrue();
-        assertThat(votos.existsByPautaIdAndAssociadoId(pauta.getId(), "A2")).isFalse();
+        assertThat(votos.existsByPautaIdAndCpf(pauta.getId(), "11111111111")).isTrue();
+        assertThat(votos.existsByPautaIdAndCpf(pauta.getId(), "22222222222")).isFalse();
     }
 
     @Test

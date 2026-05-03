@@ -26,6 +26,7 @@ br.com.desafio.votacao
 ├── sessao/     { idem }
 ├── voto/       { idem }
 ├── resultado/  { idem }
+├── cpf/        { domain (interface + enum), service (FakeCpfValidator) }   # Spec 002
 └── shared/     { config, exception }
 ```
 
@@ -37,6 +38,7 @@ br.com.desafio.votacao
 | Sessão | `SessaoController` | `SessaoService` | `Sessao` |
 | Voto | `VotoController` | `VotoService` | `Voto` |
 | Resultado | `ResultadoController` | `ResultadoService` | — (record `ResultadoApurado`) |
+| CPF (Spec 002) | — | `FakeCpfValidator` (impl de `CpfValidator`) | — |
 
 `EstadoPautaResolver` quebra ciclo `PautaService↔SessaoService`: depende diretamente do `SessaoRepository` para resolver `EstadoPauta` na borda.
 
@@ -49,7 +51,7 @@ br.com.desafio.votacao
 
 ## Schema do banco
 
-3 tabelas, criadas por Flyway (`V1__init.sql`):
+3 tabelas, criadas por Flyway (`V1__init.sql` + `V2__renomeia_associado_id_para_cpf.sql`):
 
 ```
 ┌──────────┐         ┌──────────┐         ┌──────────┐
@@ -57,15 +59,15 @@ br.com.desafio.votacao
 │──────────│ 1     1 │──────────│ 1     n │──────────│
 │ id       │         │ id       │         │ id       │
 │ titulo   │         │ pauta_id │ UNIQUE  │ pauta_id │ ┐
-│ descricao│         │ aberta_em│         │ assoc_id │ │ UNIQUE
-│ criada_em│         │ fecha_em │         │ escolha  │ ┘ (pauta_id, assoc_id)
+│ descricao│         │ aberta_em│         │ cpf      │ │ UNIQUE
+│ criada_em│         │ fecha_em │         │ escolha  │ ┘ (pauta_id, cpf)
 └──────────┘         └──────────┘         │ reg_em   │
                                           └──────────┘
 ```
 
 Constraints e índices ativos:
 - `uk_sessao_pauta` em `sessao(pauta_id)` — RN-1 (1 sessão/pauta).
-- `uk_voto_pauta_associado` em `voto(pauta_id, associado_id)` — RN-3 (1 voto/associado/pauta).
+- `uk_voto_pauta_cpf` em `voto(pauta_id, cpf)` — RN-3 (1 voto/CPF/pauta).
 - `CHECK (fecha_em > aberta_em)` em `sessao`.
 - `CHECK (escolha IN ('SIM','NAO'))` em `voto`.
 - `idx_voto_pauta` em `voto(pauta_id)` — acelera apuração.
@@ -76,12 +78,14 @@ Concorrência ([ADR-018](adr/018-concorrencia-unique.md)) é resolvida pelas con
 
 ```
 Cliente
-  │ POST { associadoId: "A1", voto: "SIM" }
+  │ POST { cpf: "11144477735", voto: "SIM" }
   ▼
 [VotoController]
   │ Bean Validation no record (@NotBlank/@NotNull/@Size)
   ▼
 [VotoService.registrar]
+  │ cpfValidator.validar(cpf)                      ── INVALIDO → CpfInvalido (404)
+  │                                                ── UNABLE_TO_VOTE → AssociadoNaoPodeVotar (404)
   │ pautaService.buscarObrigatorio(pautaId)        ── pode lançar RecursoNaoEncontrado (404)
   │ sessaoService.buscarPorPautaId(pautaId)        ── ausente → SessaoNaoAberta (409)
   │ sessao.estaAbertaEm(LocalDateTime.now(clock))  ── falso  → SessaoEncerrada (409)
@@ -115,7 +119,7 @@ Detalhado no [ADR-019](adr/019-tratamento-excecoes.md). Resumo:
 | 201 | Recurso criado |
 | 200 | Consulta com sucesso |
 | 400 | Validação Bean Validation, enum inválido, body ilegível |
-| 404 | Pauta inexistente |
+| 404 | Pauta inexistente, CPF inválido (Spec 002), associado não habilitado a votar (Spec 002) |
 | 409 | Conflito de regra de negócio (sessão duplicada, voto duplicado, sessão fechada/inexistente) |
 | 500 | Bug — logado com stack, resposta sem detalhes |
 
@@ -132,7 +136,7 @@ Detalhado no [ADR-019](adr/019-tratamento-excecoes.md). Resumo:
 Logs em SLF4J + Logback ([ADR-012](adr/012-logging.md)) nos pontos definidos em `plan.md` §6:
 
 - **INFO:** pauta criada · sessão aberta · voto registrado · sessão expirada detectada na apuração.
-- **WARN:** voto rejeitado (duplicado / sessão fechada / sem sessão) · tentativa de abrir 2ª sessão.
+- **WARN:** voto rejeitado (duplicado / sessão fechada / sem sessão / CPF inválido / associado não habilitado) · tentativa de abrir 2ª sessão.
 - **ERROR:** exceções não mapeadas (no `GlobalExceptionHandler`).
 
 Métricas Actuator/Prometheus, distributed tracing e logs JSON estruturados ficam para Spec 004 (performance).

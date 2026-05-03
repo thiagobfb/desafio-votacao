@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import br.com.desafio.votacao.cpf.domain.CpfValidator;
+import br.com.desafio.votacao.cpf.domain.StatusValidacaoCpf;
 import br.com.desafio.votacao.shared.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -38,6 +40,12 @@ class FluxoCompletoIntegracaoTest {
         public MutableClock relogioTeste() {
             return new MutableClock(INICIO.toInstant(BRASILIA), BRASILIA);
         }
+
+        @Bean
+        @Primary
+        public CpfValidator cpfValidatorPermissivo() {
+            return cpf -> StatusValidacaoCpf.ABLE_TO_VOTE;
+        }
     }
 
     @Autowired
@@ -63,11 +71,11 @@ class FluxoCompletoIntegracaoTest {
 
         abrirSessao(pautaId, 5).andExpect(status().isCreated());
 
-        votar(pautaId, "A1", "SIM").andExpect(status().isCreated());
-        votar(pautaId, "A2", "SIM").andExpect(status().isCreated());
-        votar(pautaId, "A3", "NAO").andExpect(status().isCreated());
+        votar(pautaId, "11111111111", "SIM").andExpect(status().isCreated());
+        votar(pautaId, "22222222222", "SIM").andExpect(status().isCreated());
+        votar(pautaId, "33333333333", "NAO").andExpect(status().isCreated());
 
-        votar(pautaId, "A1", "NAO").andExpect(status().isConflict());
+        votar(pautaId, "11111111111", "NAO").andExpect(status().isConflict());
 
         mockMvc.perform(get("/api/v1/pautas/" + pautaId + "/resultado"))
                 .andExpect(status().isOk())
@@ -85,7 +93,7 @@ class FluxoCompletoIntegracaoTest {
                 .andExpect(jsonPath("$.resultado").value("APROVADA"))
                 .andExpect(jsonPath("$.totalVotos").value(3));
 
-        votar(pautaId, "A4", "SIM").andExpect(status().isConflict());
+        votar(pautaId, "44444444444", "SIM").andExpect(status().isConflict());
     }
 
     @Test
@@ -102,7 +110,7 @@ class FluxoCompletoIntegracaoTest {
     void votarEmPautaSemSessaoRetorna409() throws Exception {
         long pautaId = criarPauta("Pauta sem sessão", null);
 
-        votar(pautaId, "A1", "SIM")
+        votar(pautaId, "11111111111", "SIM")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("não possui sessão")));
     }
@@ -139,10 +147,10 @@ class FluxoCompletoIntegracaoTest {
                 .content(body));
     }
 
-    private ResultActions votar(long pautaId, String associadoId, String voto) throws Exception {
+    private ResultActions votar(long pautaId, String cpf, String voto) throws Exception {
         String body = """
-                {"associadoId":"%s","voto":"%s"}
-                """.formatted(associadoId, voto);
+                {"cpf":"%s","voto":"%s"}
+                """.formatted(cpf, voto);
         return mockMvc.perform(post("/api/v1/pautas/" + pautaId + "/votos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));

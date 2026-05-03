@@ -28,8 +28,8 @@ public class Voto {
     @Column(name = "pauta_id", nullable = false)
     private Long pautaId;
 
-    @Column(name = "associado_id", nullable = false, length = 64)
-    private String associadoId;
+    @Column(nullable = false, length = 64)
+    private String cpf;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 3)
@@ -38,9 +38,9 @@ public class Voto {
     @Column(name = "registrado_em", nullable = false)
     private LocalDateTime registradoEm;
 
-    public Voto(Long pautaId, String associadoId, Escolha escolha, LocalDateTime registradoEm) {
+    public Voto(Long pautaId, String cpf, Escolha escolha, LocalDateTime registradoEm) {
         this.pautaId = pautaId;
-        this.associadoId = associadoId;
+        this.cpf = cpf;
         this.escolha = escolha;
         this.registradoEm = registradoEm;
     }

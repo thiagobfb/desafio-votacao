@@ -65,7 +65,7 @@ SPRING_PROFILES_ACTIVE=postgres mvn spring-boot:run
 mvn verify
 ```
 
-Roda **todos os testes** (atualmente 60): unitários de service, slice de web (`@WebMvcTest`), integração JPA (`@DataJpaTest`), e integração ponta-a-ponta (`@SpringBootTest`).
+Roda **todos os testes** (atualmente 79): unitários de service, slice de web (`@WebMvcTest`), integração JPA (`@DataJpaTest`), e integração ponta-a-ponta (`@SpringBootTest`).
 
 ---
 
@@ -101,10 +101,12 @@ curl -X POST http://localhost:8080/api/v1/pautas/1/sessoes \
   -H 'Content-Type: application/json' \
   -d '{"duracaoMinutos":5}'
 
-# 3. Registra voto
+# 3. Registra voto (CPF é validado pelo serviço fake — Bônus 1, Spec 002)
+#    O algoritmo dos dígitos verificadores valida o formato; '12345678901' é INVÁLIDO,
+#    '11144477735' é VÁLIDO. Para CPF válido, ABLE_TO_VOTE / UNABLE_TO_VOTE é aleatório.
 curl -X POST http://localhost:8080/api/v1/pautas/1/votos \
   -H 'Content-Type: application/json' \
-  -d '{"associadoId":"A1","voto":"SIM"}'
+  -d '{"cpf":"11144477735","voto":"SIM"}'
 
 # 4. Apura
 curl http://localhost:8080/api/v1/pautas/1/resultado
@@ -188,7 +190,7 @@ Documentação detalhada vive em [`docs/`](docs/) e em [`specs/`](specs/):
 
 Placeholders para as três tarefas bônus do enunciado. Status detalhado em [`docs/tarefas-bonus.md`](docs/tarefas-bonus.md).
 
-- **Spec 002** — Validação externa de CPF (Tarefa Bônus 1) — ❌ não implementado.
+- **Spec 002** — [Validação externa de CPF](specs/002-validacao-cpf/) (Tarefa Bônus 1) — ✅ **implementada** (algoritmo determinístico DV1+DV2 + habilitação aleatória + 19 testes adicionais).
 - **Spec 003** — Estratégia de versionamento de API (Tarefa Bônus 3) — ✅ URI prefix `/api/v1/` em vigor; estratégia completa pendente.
 - **Spec 004** — Performance e suporte a alto volume (Tarefa Bônus 2) — ⚠️ design parcial (índices, contagem agregada); sem load test medido.
 

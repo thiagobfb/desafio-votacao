@@ -28,7 +28,7 @@ public class VotoController {
     @PostMapping
     public ResponseEntity<VotoResponse> registrar(@PathVariable Long pautaId,
                                                   @Valid @RequestBody RegistrarVotoRequest req) {
-        Voto voto = votoService.registrar(pautaId, req.associadoId(), req.voto());
+        Voto voto = votoService.registrar(pautaId, req.cpf(), req.voto());
         URI location = URI.create("/api/v1/pautas/" + pautaId + "/votos/" + voto.getId());
         return ResponseEntity.created(location).body(VotoResponse.de(voto));
     }

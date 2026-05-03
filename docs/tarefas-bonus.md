@@ -4,36 +4,71 @@ O `README.md` lista três tarefas bônus do desafio. Aqui está o **estado real*
 
 | Bônus | Tema | Status |
 |---|---|---|
-| 1 | Validação externa de CPF | ❌ **Não implementado** |
+| 1 | Validação externa de CPF | ✅ **Implementado** (Spec 002) |
 | 2 | Performance | ⚠️ **Endereçado parcialmente em design**, sem implementação medida |
 | 3 | Versionamento de API | ✅ **Parcialmente implementado** (URI prefix em vigor) |
-
-A escolha de não implementar 1 e 2 é deliberada: o foco da Spec 001 era construir um **sistema de votação correto, simples e bem testado**. Tarefas bônus ganham specs próprias e ficam registradas como **placeholders** (`Spec 002`, `Spec 003`, `Spec 004`) para referência.
 
 ---
 
 ## Bônus 1 — Validação externa de CPF
 
-**Status:** Não implementado.
+**Status:** ✅ Implementado em [`specs/002-validacao-cpf/`](../specs/002-validacao-cpf/).
 
-### O que existiria se implementado (proposta para Spec 002)
+### O que existe hoje no código
 
-- Interface `CpfValidator` com método `StatusValidacao validar(String cpf)` retornando `ABLE_TO_VOTE` / `UNABLE_TO_VOTE` / inválido.
-- Implementação `FakeCpfValidator` (conforme desafio: retorno aleatório).
-- Mapeamento HTTP:
-  - CPF inválido por formato → **404** (NotFound) no client e no nosso endpoint.
-  - CPF válido + `UNABLE_TO_VOTE` → **422** (Unprocessable Entity) ou **409** com mensagem clara.
-- Hook em `VotoService.registrar()` antes da inserção.
-- Testes unitários com fake **fixo** (não-aleatório) — determinismo.
-- Toggle por configuração (`votacao.cpf.validador=fake|http|disabled`) para o avaliador testar com/sem.
+- **Interface** `CpfValidator` em `cpf/domain/` com método `validar(String cpf)` retornando o enum `StatusValidacaoCpf` (`INVALIDO` / `UNABLE_TO_VOTE` / `ABLE_TO_VOTE`).
+- **Implementação fake** `FakeCpfValidator` (`cpf/service/`) — `@Component` em duas etapas:
+  - **Formato (determinístico)** — algoritmo de dígitos verificadores DV1 e DV2 da Receita Federal:
+    ```
+    Soma1 = d1*10+d2*9+d3*8+d4*7+d5*6+d6*5+d7*4+d8*3+d9*2
+    DV1   = (Soma1 % 11 < 2) ? 0 : 11 - (Soma1 % 11)
 
-### Por que não foi feito
+    Soma2 = d1*11+d2*10+d3*9+d4*8+d5*7+d6*6+d7*5+d8*4+d9*3+DV1*2
+    DV2   = (Soma2 % 11 < 2) ? 0 : 11 - (Soma2 % 11)
+    ```
+    CPF é válido quando `d10 == DV1` e `d11 == DV2`. Aceita formatado (`111.444.777-35`) e nu (`11144477735`).
+  - **Habilitação (aleatória)** — CPF estruturalmente válido sorteia entre `ABLE_TO_VOTE` e `UNABLE_TO_VOTE` (enunciado: *"um mesmo CPF pode funcionar em um teste e não funcionar no outro"*).
+- **Hook em `VotoService.registrar()`** — chamada ao validador é a primeira checagem (fail-fast); falha não consulta pauta nem sessão.
+- **Mapeamento HTTP no `GlobalExceptionHandler`:**
+  - `CpfInvalidoException` → **404** com mensagem `"CPF X inválido ou não encontrado"`.
+  - `AssociadoNaoPodeVotarException` → **404** com mensagem `"Associado com CPF X não está habilitado a votar no momento"`.
+- **Schema do banco** evoluiu via migration `V2__renomeia_associado_id_para_cpf.sql` — coluna `associado_id` foi renomeada para `cpf` e a constraint UNIQUE virou `uk_voto_pauta_cpf`. Funciona em H2 e PostgreSQL.
+- **Testes** novos: `FakeCpfValidatorTest` cobre CPFs válidos (puro e formatado), DV1 errado, DV2 errado, comprimento incorreto, não-numérico, null, vazio + distribuição entre `ABLE_TO_VOTE` e `UNABLE_TO_VOTE`. Mais 2 cenários em `VotoServiceTest` e 2 em `VotoControllerTest`.
+- **Determinismo em testes:** `FluxoCompletoIntegracaoTest` injeta um `@Primary CpfValidator` permissivo (`ABLE_TO_VOTE` sempre) via `@TestConfiguration` — mesmo padrão usado para `MutableClock`.
 
-A Spec 001 já entrega **todos os requisitos funcionais obrigatórios** (RF-1 a RF-5) e **regras de negócio** (RN-1 a RN-5) do enunciado original. SDD privilegia entregar specs completas em vez de fragmentos de várias.
+### Tentativa via curl
 
-### Onde encaixaria
+```bash
+# 1. Cria pauta + sessão
+curl -X POST http://localhost:8080/api/v1/pautas \
+  -H 'Content-Type: application/json' \
+  -d '{"titulo":"Aprovação 2026"}'
 
-Nova feature `cpf/` (paralela a `pauta/`, `voto/`...) com o mesmo padrão `api / domain / service / repository`. Injeção em `VotoService`.
+curl -X POST http://localhost:8080/api/v1/pautas/1/sessoes \
+  -H 'Content-Type: application/json' \
+  -d '{"duracaoMinutos":5}'
+
+# 2. Tenta votar com CPF válido — pode dar 201 (ABLE) ou 404 (UNABLE)
+curl -X POST http://localhost:8080/api/v1/pautas/1/votos \
+  -H 'Content-Type: application/json' \
+  -d '{"cpf":"11144477735","voto":"SIM"}'
+
+# 3. Tenta votar com CPF inválido — sempre 404 (INVALIDO; algoritmo de DV reprova)
+curl -X POST http://localhost:8080/api/v1/pautas/1/votos \
+  -H 'Content-Type: application/json' \
+  -d '{"cpf":"12345678901","voto":"SIM"}'
+```
+
+A parte de **formato** é determinística (CPF com DVs errados sempre dá `INVALIDO`); a parte de **habilitação** é aleatória — o avaliador pode precisar tentar mais de uma vez para ver `ABLE_TO_VOTE` em um CPF válido.
+
+### Decisão sobre o status HTTP
+
+O enunciado original mostra ambos os erros (CPF inválido e UNABLE_TO_VOTE) sendo tratados com 404 (`"// CPF Nao Ok para votar - retornar 404 no client tb"`). Seguimos literalmente o spec; mensagens distintas no body permitem o cliente diferenciar os dois casos sem ler o status code.
+
+### O que ficou de fora (escopo Spec 002.1 ou 005)
+
+- **Cliente HTTP real** para um serviço externo (apenas a interface está pronta — basta uma nova `@Component` substituindo a fake).
+- **Cache** de respostas do validador.
 
 ---
 
@@ -54,7 +89,6 @@ Nova feature `cpf/` (paralela a `pauta/`, `voto/`...) com o mesmo padrão `api /
 - Nenhum **benchmark** ou **load test** medido (sem JMH, k6, Gatling, JMeter).
 - Sem **caching** (Caffeine/Redis) na contagem.
 - Sem **virtual threads** habilitados (Java 21+ permitiria).
-- Sem materialização de view ou contagem incremental.
 - Sem otimizações específicas para o cenário "centenas de milhares de votos" mencionado no enunciado.
 
 ### Trabalho proposto (Spec 004 — placeholder)
@@ -63,7 +97,6 @@ Nova feature `cpf/` (paralela a `pauta/`, `voto/`...) com o mesmo padrão `api /
 - Baseline de latência **p95 / p99** para os 4 endpoints.
 - Profiling com async-profiler / JFR.
 - Decisão fundamentada de cache vs materialização vs nada.
-- Migração Postgres + connection pool tuning (HikariCP).
 
 ---
 
@@ -86,14 +119,14 @@ Nova feature `cpf/` (paralela a `pauta/`, `voto/`...) com o mesmo padrão `api /
 
 ### Resposta à pergunta "Como você versionaria?" (do desafio)
 
-> Eu uso **prefixo de URI** (`/api/v1/`) como caminho preferencial: é visível em logs, curl e CDN; cliente sabe imediatamente qual contrato consome; cacheável por path. Quebras viram `/api/v2/` com período de coexistência (mínimo 6 meses, com header `Deprecation: true; sunset=...` em `v1`). Mudanças aditivas (campos opcionais novos) ficam na mesma versão. Alternativas (header `Accept-Version`, media type `application/vnd.X.v1+json`) são RESTfully puras mas pioram observabilidade no dia a dia. Detalhamento completo fica em **Spec 003 — Versionamento de API**.
+> Eu uso **prefixo de URI** (`/api/v1/`) como caminho preferencial: é visível em logs, curl e CDN; cliente sabe imediatamente qual contrato consome; cacheável por path. Quebras viram `/api/v2/` com período de coexistência (mínimo 6 meses, com header `Deprecation: true; sunset=...` em `v1`). Mudanças aditivas (campos opcionais novos) ficam na mesma versão. Detalhamento completo fica em **Spec 003 — Versionamento de API**.
 
 ---
 
 ## Resumo executável
 
-Quando o avaliador rodar o sistema, ele encontrará:
+Quando o avaliador rodar o sistema, encontrará:
 
-- ✅ Endpoints todos sob `/api/v1/...`
-- ❌ Validação de CPF: ausente — qualquer string vai como `associadoId`.
-- ⚠️ Performance: índices presentes, mas sem evidência empírica.
+- ✅ Endpoints todos sob `/api/v1/...`.
+- ✅ Validação de CPF: ativa — `cpf` é validado pelo fake antes de qualquer regra de domínio; resposta HTTP é 404 nos dois caminhos de falha.
+- ⚠️ Performance: índices presentes e queries agregadas, mas **sem evidência empírica**.

@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record RegistrarVotoRequest(
-        @NotBlank @Size(max = 64) String associadoId,
+        @NotBlank @Size(max = 64) String cpf,
         @NotNull Escolha voto
 ) {
 }

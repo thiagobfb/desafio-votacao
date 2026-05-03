@@ -18,8 +18,12 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(RecursoNaoEncontradoException.class)
-    public ResponseEntity<ErroResponse> handleNaoEncontrado(RecursoNaoEncontradoException ex) {
+    @ExceptionHandler({
+            RecursoNaoEncontradoException.class,
+            CpfInvalidoException.class,
+            AssociadoNaoPodeVotarException.class
+    })
+    public ResponseEntity<ErroResponse> handleNaoEncontrado(NegocioException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErroResponse(404, ex.getMessage()));
     }
